@@ -1,6 +1,7 @@
 # The following code has been modified from TIMSCONVERT 1.0.0.
 # For more information see: https://github.com/gtluu/timsconvert/tree/manuscript_v1.0.0
 
+from typing import Any
 
 import os
 import sqlite3
@@ -30,7 +31,7 @@ class LazyAnalysis:
         self.names = table_names + view_names
         cursor.close()
 
-    def __getitem__(self, name):
+    def __getitem__(self, name: str):
         if name not in self._data:
             result = pd.concat(
                 [
@@ -44,7 +45,7 @@ class LazyAnalysis:
             self._data[name] = result
         return self._data[name]
 
-    def join_frame(self, other):
+    def join_frame(self, other: str):
         if other not in self._joined_data:
             result = pd.concat(
                 [
@@ -59,6 +60,17 @@ class LazyAnalysis:
 
             self._joined_data[other] = result
         return self._joined_data[other]
+
+    def range(self, name: str, entries: list[str]) -> list[tuple[Any, Any]]:
+
+        results = []
+        cursor = self.conn.cursor()
+        for column in entries:
+            cursor.execute(f"SELECT min({column}), max({column}) FROM {name}")
+            values = cursor.fetchone()
+            results.append((values[0], values[1]))
+
+        return results
 
 
 class TsfData(object):
