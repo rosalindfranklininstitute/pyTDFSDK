@@ -41,7 +41,10 @@ def call_conversion_func(tdf_sdk, handle, frame_id, input_data, func):
         cnt,
     )
     if success == 0:
-        throw_last_timsdata_error(tdf_sdk)
+        if func.__name__.startswith("tsf"):
+            throw_last_tsfdata_error(tdf_sdk)
+        else:
+            throw_last_timsdata_error(tdf_sdk)
     return out
 
 

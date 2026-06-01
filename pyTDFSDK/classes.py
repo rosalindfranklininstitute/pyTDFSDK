@@ -12,6 +12,55 @@ from pyTDFSDK.ctypes_data_structures import *
 from pyTDFSDK.error import *
 
 
+class LazyAnalysis:
+    def __init__(self, conn, sql_chunksize):
+        self.conn = conn
+        self.sql_chunksize = sql_chunksize
+
+        self._data = {}
+        self._joined_data = {}
+
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        table_names = cursor.fetchall()
+        table_names = [table[0] for table in table_names]
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='view';")
+        view_names = cursor.fetchall()
+        view_names = [view[0] for view in view_names]
+        self.names = table_names + view_names
+        cursor.close()
+
+    def __getitem__(self, name):
+        if name not in self._data:
+            result = pd.concat(
+                [
+                    i
+                    for i in pd.read_sql_query(
+                        "SELECT * FROM " + name, self.conn, chunksize=self.sql_chunksize
+                    )
+                ]
+            )
+
+            self._data[name] = result
+        return self._data[name]
+
+    def join_frame(self, other):
+        if other not in self._joined_data:
+            result = pd.concat(
+                [
+                    i
+                    for i in pd.read_sql_query(
+                        f"SELECT * FROM Frames INNER JOIN {other} ON Frames.Id = {other}.Frame",
+                        self.conn,
+                        chunksize=self.sql_chunksize,
+                    )
+                ]
+            )
+
+            self._joined_data[other] = result
+        return self._joined_data[other]
+
+
 class TsfData(object):
     """
     Class containing metadata from TSF files and methods from TDF-SDK library to work with TSF format data.
@@ -44,10 +93,24 @@ class TsfData(object):
             throw_last_tsfdata_error(self.api)
         self.conn = sqlite3.connect(os.path.join(bruker_d_folder_name, "analysis.tsf"))
 
-        self.analysis = None
+        self.analysis = LazyAnalysis(self.conn, sql_chunksize)
 
-        self.get_db_tables(sql_chunksize=sql_chunksize)
-        self.close_sql_connection()
+        self.GlobalMetadata = {}
+        for i in pd.read_sql_query(
+            "SELECT * FROM GlobalMetadata", self.conn, chunksize=sql_chunksize
+        ):
+            self.GlobalMetadata |= {
+                row["Key"]: row["Value"] for index, row in i.iterrows()
+            }
+
+        for key, value in self.GlobalMetadata.items():
+            try:
+                self.GlobalMetadata[key] = int(value)
+            except ValueError:
+                try:
+                    self.GlobalMetadata[key] = float(value)
+                except:
+                    pass
 
     def __del__(self):
         """
@@ -56,40 +119,7 @@ class TsfData(object):
         if hasattr(self, "handle"):
             tsf_close(self.api, self.handle, self.conn)
 
-    def get_db_tables(self, sql_chunksize=1000):
-        """
-        Get a dictionary of all tables found in the analysis.tsf SQLite database in which the table names act as keys
-        and the tables as a pandas.DataFrame of values; this is stored in pyTDFSDK.classes.TsfData.analysis.
-
-        :param sql_chunksize: Number of rows to read from SQL database query at once when reading tables/views from
-            analysis.tsf.
-        :type sql_chunksize: int
-        """
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        table_names = cursor.fetchall()
-        table_names = [table[0] for table in table_names]
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='view';")
-        view_names = cursor.fetchall()
-        view_names = [view[0] for view in view_names]
-        names = table_names + view_names
-        self.analysis = {
-            name: pd.concat(
-                [
-                    i
-                    for i in pd.read_sql_query(
-                        "SELECT * FROM " + name, self.conn, chunksize=sql_chunksize
-                    )
-                ],
-                ignore_index=True,
-            )
-            for name in names
-        }
-        self.analysis["GlobalMetadata"] = {
-            row["Key"]: row["Value"]
-            for index, row in self.analysis["GlobalMetadata"].iterrows()
-        }
-        cursor.close()
+        self.close_sql_connection()
 
     def close_sql_connection(self):
         """
@@ -184,7 +214,7 @@ class TdfData(object):
             )
             for name in names
         }
-        self.analysis["GlobalMetadata"] = {
+        self.GlobalMetadata = {
             row["Key"]: row["Value"]
             for index, row in self.analysis["GlobalMetadata"].iterrows()
         }
@@ -262,12 +292,9 @@ class TsfSpectrum(object):
         self.mz_encoding = mz_encoding
         self.intensity_encoding = intensity_encoding
 
-        if (
-            "MaldiApplicationType"
-            not in self.tsf_data.analysis["GlobalMetadata"].keys()
-        ):
+        if "MaldiApplicationType" not in self.tsf_data.GlobalMetadata.keys():
             self.get_lcms_tsf_data()
-        elif "MaldiApplicationType" in self.tsf_data.analysis["GlobalMetadata"].keys():
+        elif "MaldiApplicationType" in self.tsf_data.GlobalMetadata.keys():
             self.get_maldi_tsf_data()
 
     def get_lcms_tsf_data(self):
@@ -512,15 +539,12 @@ class TdfSpectrum(object):
         if self.precursor != 0:
             self.frame = 0
 
-        if (
-            "MaldiApplicationType"
-            not in self.tdf_data.analysis["GlobalMetadata"].keys()
-        ):
+        if "MaldiApplicationType" not in self.tdf_data.GlobalMetadata.keys():
             if self.frame != 0 and self.precursor == 0:
                 self.get_lcms_tdf_data()
             elif self.frame == 0 and self.precursor != 0:
                 self.get_ddapasef_precursor_data()
-        elif "MaldiApplicationType" in self.tdf_data.analysis["GlobalMetadata"].keys():
+        elif "MaldiApplicationType" in self.tdf_data.GlobalMetadata.keys():
             self.get_maldi_tdf_data()
 
     def get_lcms_tdf_data(self):

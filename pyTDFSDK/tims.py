@@ -961,12 +961,8 @@ def extract_ddapasef_precursor_spectrum(
         )
         pasef_array = np.unique(pasef_array[np.argsort(pasef_array[:, 0])], axis=0)
 
-        mz_acq_range_lower = float(
-            tdf_data.analysis["GlobalMetadata"]["MzAcqRangeLower"]
-        )
-        mz_acq_range_upper = float(
-            tdf_data.analysis["GlobalMetadata"]["MzAcqRangeUpper"]
-        )
+        mz_acq_range_lower = float(tdf_data.GlobalMetadata["MzAcqRangeLower"])
+        mz_acq_range_upper = float(tdf_data.GlobalMetadata["MzAcqRangeUpper"])
         bin_size = 0.005
         bins = np.arange(
             mz_acq_range_lower,
