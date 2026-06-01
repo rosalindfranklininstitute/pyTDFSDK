@@ -185,10 +185,24 @@ class TdfData(object):
             throw_last_timsdata_error(self.api)
         self.conn = sqlite3.connect(os.path.join(bruker_d_folder_name, "analysis.tdf"))
 
-        self.analysis = None
+        self.analysis = LazyAnalysis(self.conn, sql_chunksize)
 
-        self.get_db_tables(sql_chunksize=sql_chunksize)
-        self.close_sql_connection()
+        self.GlobalMetadata = {}
+        for i in pd.read_sql_query(
+            "SELECT * FROM GlobalMetadata", self.conn, chunksize=sql_chunksize
+        ):
+            self.GlobalMetadata |= {
+                row["Key"]: row["Value"] for index, row in i.iterrows()
+            }
+
+        for key, value in self.GlobalMetadata.items():
+            try:
+                self.GlobalMetadata[key] = int(value)
+            except ValueError:
+                try:
+                    self.GlobalMetadata[key] = float(value)
+                except:
+                    pass
 
     def __del__(self):
         """
@@ -196,41 +210,7 @@ class TdfData(object):
         """
         if hasattr(self, "handle"):
             tims_close(self.api, self.handle, self.conn)
-
-    def get_db_tables(self, sql_chunksize=1000):
-        """
-        Get a dictionary of all tables found in the analysis.tdf SQLite database in which the table names act as keys
-        and the tables as a pandas.DataFrame of values; this is stored in pyTDFSDK.classes.TdfData.analysis.
-
-        :param sql_chunksize: Number of rows to read from SQL database query at once when reading tables/views from
-            analysis.tdf.
-        :type sql_chunksize: int
-        """
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        table_names = cursor.fetchall()
-        table_names = [table[0] for table in table_names]
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='view';")
-        view_names = cursor.fetchall()
-        view_names = [view[0] for view in view_names]
-        names = table_names + view_names
-        self.analysis = {
-            name: pd.concat(
-                [
-                    i
-                    for i in pd.read_sql_query(
-                        "SELECT * FROM " + name, self.conn, chunksize=sql_chunksize
-                    )
-                ],
-                ignore_index=True,
-            )
-            for name in names
-        }
-        self.GlobalMetadata = {
-            row["Key"]: row["Value"]
-            for index, row in self.analysis["GlobalMetadata"].iterrows()
-        }
-        cursor.close()
+        self.close_sql_connection()
 
     def close_sql_connection(self):
         """
