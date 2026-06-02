@@ -7,8 +7,6 @@ from pyTDFSDK.ctypes_data_structures import *
 from pyTDFSDK.error import throw_last_timsdata_error
 from pyTDFSDK.util import call_conversion_func, get_encoding_dtype, bin_profile_spectrum
 
-from icecream import ic
-
 
 def tims_ccs_to_oneoverk0_for_mz(tdf_sdk, ccs, charge, mz):
     """
