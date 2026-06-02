@@ -7,6 +7,8 @@ from pyTDFSDK.ctypes_data_structures import *
 from pyTDFSDK.error import throw_last_timsdata_error
 from pyTDFSDK.util import call_conversion_func, get_encoding_dtype, bin_profile_spectrum
 
+from icecream import ic
+
 
 def tims_ccs_to_oneoverk0_for_mz(tdf_sdk, ccs, charge, mz):
     """
@@ -667,6 +669,85 @@ def tims_read_scans_v2(
         intensities = buf[d : d + npeaks]
         d += npeaks
         result.append((indices, intensities))
+    return result
+
+
+def tims_read_scans_v2_as_array(
+    tdf_sdk,
+    handle,
+    frame_id,
+    scan_begin,
+    scan_end,
+    initial_frame_buffer_size=128,
+    peak_buffer_count=-1,
+):
+    """
+    Read a range of scans from a single frame. The resulting array contains the indices and peaks, where appropriate, or nan.
+    The final array has dimensions (num_scans, peak_count, 0: index, 1: intensity)
+
+    :param tdf_sdk: Library initialized by pyTDFSDK.init_tdf_sdk.init_tdf_sdk_api().
+    :type tdf_sdk: ctypes.CDLL
+    :param handle: Handle value for TDF dataset initialized using pyTDFSDK.tims.tims_open().
+    :type handle: int
+    :param frame_id: ID of the frame of interest.
+    :type frame_id: int
+    :param scan_begin: Beginning scan number (corresponding to 1/K0 value) within frame.
+    :type scan_begin: int
+    :param scan_end: Ending scan number (corresponding to 1/K0 value) within frame (non-inclusive).
+    :type scan_end: int
+    :param initial_frame_buffer_size: Initial number of buffer bytes necessary for the output, defaults to 128.
+    :type initial_frame_buffer_size: int
+    :param peak_buffer_count: The maximum number of peaks expected per scan. If -1 then uses the maximum for this frame. If less than the maximum for this frame raises a Value Error
+    :type peak_buffer_count: int
+    :return: An array with the indices and peaks.
+    :rtype: numpy.array[tuple[int, int, int]]
+    """
+    # buffer-growing loop
+    while True:
+        cnt = int(initial_frame_buffer_size)
+        buf = np.empty(shape=cnt, dtype=np.uint32)
+        length = 4 * cnt
+        required_len = tdf_sdk.tims_read_scans_v2(
+            handle,
+            frame_id,
+            scan_begin,
+            scan_end,
+            buf.ctypes.data_as(POINTER(c_uint32)),
+            length,
+        )
+        if required_len == 0:
+            throw_last_timsdata_error(tdf_sdk)
+        if required_len > length:
+            if required_len > 16777216:
+                # arbitrary limit for now...
+                raise RuntimeError("Maximum expected frame size exceeded.")
+            initial_frame_buffer_size = required_len / 4 + 1  # grow buffer
+        else:
+            break
+
+    d = scan_end - scan_begin
+    peak_count = buf[:d]
+    max_peak_count = np.max(peak_count)
+    if peak_buffer_count > 0:
+        if max_peak_count > peak_buffer_count:
+            raise ValueError(
+                f"There were more than {peak_buffer_count} peaks. Stopping."
+            )
+    else:
+        peak_buffer_count = max_peak_count
+    total_peaks = np.sum(peak_count)
+    peak_end_2 = np.cumsum(peak_count, dtype=np.int64) * 2
+    peak_start_2 = np.concatenate([[0], peak_end_2])
+    indices = np.arange(total_peaks * 2, dtype=np.int64)
+
+    scan_index = np.searchsorted(peak_end_2, indices, side="right")
+    peaks_total = np.take_along_axis(peak_start_2, scan_index)
+    peaks_count = np.take_along_axis(peak_count, scan_index)
+    next = indices - peaks_total
+    data_type, peak_index = np.divmod(next, peaks_count)
+    result = np.full((d, max_peak_count, 2), np.nan)
+    result[scan_index, peak_index, data_type] = buf[d : d + total_peaks * 2]
+
     return result
 
 

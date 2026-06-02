@@ -119,6 +119,9 @@ requires-dist = [
     { name = "pandas", specifier = ">=3.0.3" },
 ]
 
+[package.metadata.requires-dev]
+dev = []
+
 [[package]]
 name = "python-dateutil"
 version = "2.9.0.post0"

@@ -24,3 +24,6 @@ Homepage='https://github.com/rosalindfranklininstitute/pyTDFSDK'
 
 [tool.uv.build-backend]
 data = { data = "TDF-SDK" }
+
+[dependency-groups]
+dev = []
