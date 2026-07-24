@@ -5,9 +5,7 @@
 import os
 import platform
 from ctypes import (
-    CFUNCTYPE,
     POINTER,
-    Structure,
     c_int64,
     c_uint32,
     c_double,

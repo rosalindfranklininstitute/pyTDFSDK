@@ -3,7 +3,7 @@
 
 
 import numpy as np
-from ctypes import POINTER, c_double, c_float, c_uint32, c_uint64
+from ctypes import POINTER, c_double, c_float, c_uint32
 from pyTDFSDK.error import throw_last_tsfdata_error
 from pyTDFSDK.util import call_conversion_func, get_encoding_dtype, bin_profile_spectrum
 
