@@ -1,7 +1,7 @@
 # The following code has been modified from TIMSCONVERT 1.0.0.
 # For more information see: https://github.com/gtluu/timsconvert/tree/manuscript_v1.0.0
 
-
+import logging
 import os
 import platform
 from ctypes import (
@@ -18,6 +18,8 @@ from ctypes import (
     c_bool,
 )
 from pyTDFSDK.ctypes_data_structures import *
+
+logger = logging.getLogger(__name__)
 
 
 def init_tdf_sdk_api(bruker_api_file_name=""):
@@ -40,6 +42,7 @@ def init_tdf_sdk_api(bruker_api_file_name=""):
                 os.path.split(os.path.dirname(__file__))[0], "TDF-SDK", "libtimsdata.so"
             )
 
+    logger.debug(bruker_api_file_name)
     tdf_sdk = cdll.LoadLibrary(bruker_api_file_name)
 
     convfunc_argtypes = [

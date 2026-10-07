@@ -74,6 +74,12 @@ class LazyAnalysis:
 
         return results
 
+    def unique(self, name: str, column: str) -> list[tuple[Any, Any]]:
+
+        cursor = self.conn.cursor()
+        cursor.execute(f"SELECT DISTINCT {column} FROM {name}")
+        return cursor.fetchall()
+
 
 class TsfData(object):
     """
